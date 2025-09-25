@@ -3,6 +3,8 @@ package org.dbpedia.extraction.util
 import java.util.logging.{Level, Logger}
 import java.util.{Locale, MissingResourceException}
 
+import java.net.URL
+
 import org.dbpedia.extraction.config.Config
 import org.dbpedia.extraction.ontology.{DBpediaNamespace, RdfNamespace}
 
@@ -91,7 +93,24 @@ object Language extends (String => Language)
     }
 
     val languages = new HashMap[String,Language]
-    val source = Source.fromURL(wikipediaLanguageUrl)(Codec.UTF8)
+
+    val url = new URL(wikipediaLanguageUrl)
+    val customUserAgentText =
+      try {
+        System.getProperty("extract.wikiapi.customUserAgent.text", "curl/7.54")
+        // curl seems not blocked by Wikimedia yet so we take this; TODO think about a better default user agent here, problem we do not want to give dbpedia mail adress here since Wikimedia might get confused between officially hosted and community executed instances of this code
+        System.getProperty("extract.wikiapi.customUserAgent.text", "curl/8.6.0")
+      } catch {
+        // set agent as per https://foundation.wikimedia.org/wiki/Policy%3AWikimedia_Foundation_User-Agent_Policy
+        // this is a fallback in case sth really goes wrong, it is desirable that Wikimedia gets in touch with us in this case
+        case ex : Exception => "DBpedia-Extraction-Framework/1.0 (https://github.com/dbpedia/extraction-framework; dbpedia@infai.org)"
+      }
+
+    val conn = url.openConnection()
+    conn.setRequestProperty("User-Agent", customUserAgentText)
+    val source = Source.fromInputStream(conn.getInputStream)("UTF-8")
+
+    //val source = Source.fromURL(wikipediaLanguageUrl)(Codec.UTF8)
     val wikiLanguageCodes = try source.getLines.toList finally source.close
 
     val specialLangs: JsonConfig = new JsonConfig(this.getClass.getClassLoader.getResource("addonlangs.json"))
